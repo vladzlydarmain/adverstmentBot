@@ -91,8 +91,9 @@ function getLink(link,callback){
     })
 }
 
-function getRandomLink(id,callback){
+function getRandomLink(id,callback,checks = 0){
     const query = `SELECT link,chat_id,uses FROM Links`
+    console.log(checks)
     db.all(query,(err,res)=>{
         if (res){
             const index = Math.floor(Math.random()*res.length)
@@ -100,7 +101,11 @@ function getRandomLink(id,callback){
             const randomLink = res[index]
             bot.telegram.getChatMember(randomLink.chat_id, id).then((value)=>{
                 if(value.status == "member" || value.status == "administrator" || value.status == "creator"){
-                    getRandomLink(id,callback)
+                    if(checks >= 20){
+                        callback("None")
+                    } else {
+                        getRandomLink(id,callback,checks+=1)
+                    }
                 } else {
                     callback(randomLink) 
                 }
@@ -219,33 +224,38 @@ bot.hears('Отримати бали (1 бал за 1 підписку)',(ctx)=>
     getUser(ctx.from.id,(res1)=>{
         if (res1){
             getRandomLink(ctx.from.id,(res)=>{
-                ctx.reply(`${res.link}`,  Markup.inlineKeyboard([Markup.button.callback('Перевірити підписку','check')]))
-                bot.action('check', (ctx) => {
-                    // console.log(ctx.from.id)
-                    // console.log(res.chat_id)
-                    const check = bot.telegram.getChatMember(res.chat_id,ctx.from.id)
-                      
-                    check.then((value)=>{
-                        if(value && value.status == "member"){
-                            addUses(res.link)
-                            if(res.uses + 1 >= 100){
-                                deleteLink(res.link)
-                            }
-                            updatePoints(ctx.from.id,'+ 1')
-                            ctx.editMessageText("Успіх! Вам нараховано 1 бал")
-                            ctx.reply(`Оберіть дію:`,Markup.keyboard([
-                                Markup.button.callback('Отримати бали (1 бал за 1 підписку)'), 
-                                Markup.button.callback('Отримати інформацію про аккаунт'),
-                                Markup.button.callback('Додати свою ссилку')
-                            ])
-                            )
-    
-                        } else {
+                if (res != "None"){
+                    ctx.reply(`${res.link}`,  Markup.inlineKeyboard([Markup.button.callback('Перевірити підписку','check')]))
+                    bot.action('check', (ctx) => {
+                        // console.log(ctx.from.id)
+                        // console.log(res.chat_id)
+                        const check = bot.telegram.getChatMember(res.chat_id,ctx.from.id)
+
+                        check.then((value)=>{
                             console.log(value.status)
-                            ctx.reply("Перевірте підписку на канал.")
-                        }
-                    })
-                }) 
+                            if(value && value.status == "member"){
+                                addUses(res.link)
+                                if(res.uses + 1 >= 100){
+                                    deleteLink(res.link)
+                                }
+                                updatePoints(ctx.from.id,'+ 1')
+                                ctx.editMessageText("Успіх! Вам нараховано 1 бал")
+                                ctx.reply(`Оберіть дію:`,Markup.keyboard([
+                                    Markup.button.callback('Отримати бали (1 бал за 1 підписку)'), 
+                                    Markup.button.callback('Отримати інформацію про аккаунт'),
+                                    Markup.button.callback('Додати свою ссилку')
+                                ])
+                                )
+                            
+                            } else {
+                                console.log(value.status)
+                                ctx.reply("Перевірте підписку на канал.")
+                            }
+                        })
+                    }) 
+                } else {
+                    ctx.reply("Посилань не знайдено")
+                }
             })
         } 
     })
@@ -261,14 +271,16 @@ bot.hears('Додати свою ссилку', (ctx) => {
                         await bot.telegram.getChat(link.chat_id).then((value)=>{
                             replyButtons.push(Markup.button.callback(`${value.title}`,`${value.title}`))
                             bot.action(value.title,(ctx)=>{
-                                ctx.editMessageReplyMarkup()
-                                console.log(res.points)
-                                if (res.points >= 100){
-                                    updatePoints(ctx.from.id, '- 100')
-                                    migrateNotAddedLink(link.link,ctx.from.id,link.chat_id)
-                                } else {
-                                    ctx.reply('У вас недостатньо балів. Їх можно заробляти підписуючись на канали')
-                                }
+                                getUser(ctx.from.id,(res)=>{
+                                    ctx.editMessageReplyMarkup()
+                                    console.log(res.points)
+                                    if (res.points >= 100){
+                                        updatePoints(ctx.from.id, '- 100')
+                                        migrateNotAddedLink(link.link,ctx.from.id,link.chat_id)
+                                    } else {
+                                        ctx.reply('У вас недостатньо балів. Їх можно заробляти підписуючись на канали')
+                                    }
+                                })
                             })
                         }) 
                     }
